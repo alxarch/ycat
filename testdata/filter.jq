@@ -1,0 +1,1 @@
+.args = $ARGS.positional
