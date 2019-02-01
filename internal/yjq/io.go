@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"path"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -15,13 +14,7 @@ func CopyFile(filename string, w io.Writer) error {
 		return err
 	}
 	defer f.Close()
-	switch path.Ext(filename) {
-	case ".yaml", ".yml":
-		return CopyYAMLToJSON(w, f)
-	default:
-		_, err := io.Copy(w, f)
-		return err
-	}
+	return CopyYAMLToJSON(w, f)
 }
 
 func CopyYAMLToJSON(w io.Writer, r io.Reader) (err error) {
