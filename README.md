@@ -63,7 +63,9 @@ Results from `jq`'s output are separated by `---` in a single YAML value stream.
 
 ## Installation
 
-Assuming `$GOPATH/bin` is in `$PATH` just
+Download an executable for your platform from github [releases]( https://github.com/alxarch/yjq/releases/latest).
+
+Alternatively, assuming `$GOPATH/bin` is in `$PATH` just
 
 ```
 go get github.com/alxarch/yjq
