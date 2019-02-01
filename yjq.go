@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 
+	"github.com/alxarch/yjq/internal"
 	"github.com/alxarch/yjq/internal/yjq"
 	"github.com/spf13/pflag"
 )
@@ -144,17 +144,8 @@ func main() {
 	}
 }
 
-func exitCode(err error) int {
-	if err, ok := err.(*exec.ExitError); ok {
-		if code, ok := err.ProcessState.Sys().(syscall.WaitStatus); ok {
-			return int(code)
-		}
-	}
-	return 2
-}
-
 func onExit(err error) {
-	switch code := exitCode(err); code {
+	switch code := internal.ExitCode(err); code {
 	case 2, 3:
 		logger.Println(err)
 		fallthrough
