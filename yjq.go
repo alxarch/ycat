@@ -19,6 +19,7 @@ var (
 	cmdName = flags.String("cmd", "jq", "Name of the jq command")
 	input   = flags.BoolP("yaml-input", "i", false, "Convert YAML input to JSON")
 	output  = flags.BoolP("yaml-output", "o", false, "Convert JSON output to YAML")
+	help    = flags.BoolP("help", "h", false, "Show usage and exit")
 	files   []string
 	cmdArgs []string
 	args    []string
