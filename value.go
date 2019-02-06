@@ -1,4 +1,4 @@
-package yjq
+package ycat
 
 import "encoding/json"
 
@@ -33,13 +33,8 @@ func (t ValueType) String() string {
 }
 
 type Value struct {
-	Type   ValueType
-	Value  interface{}
-	Object map[string]interface{}
-	Array  []interface{}
-	String string
-	Number float64
-	Bool   bool
+	Type  ValueType
+	Value interface{}
 }
 
 func TypeOf(x interface{}) ValueType {
@@ -61,6 +56,7 @@ func TypeOf(x interface{}) ValueType {
 		return 0
 	}
 }
+
 func (v *Value) UnmarshalJSON(data []byte) error {
 	var x interface{}
 	if err := json.Unmarshal(data, &x); err != nil {
@@ -78,9 +74,11 @@ func (v *Value) MarshalJSON() ([]byte, error) {
 func (v *Value) IsZero() bool {
 	return v.Type == Null
 }
+
 func (v *Value) MarshalYAML() (interface{}, error) {
 	return v.Value, nil
 }
+
 func (v *Value) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
 	var obj map[string]interface{}
 	if err = unmarshal(&obj); err == nil {

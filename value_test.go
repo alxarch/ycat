@@ -1,31 +1,31 @@
-package yjq_test
+package ycat_test
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/alxarch/yjq/internal/yjq"
+	"github.com/alxarch/ycat"
 	yaml "gopkg.in/yaml.v2"
 )
 
 func TestValue_UnmarshalYAML(t *testing.T) {
 	type TestCase struct {
 		YAML  string
-		Type  yjq.ValueType
+		Type  ycat.ValueType
 		Value interface{}
 		Error bool
 	}
 	for _, tc := range []TestCase{
-		{`null`, yjq.Null, (interface{})(nil), false},
-		{``, yjq.Null, (interface{})(nil), false},
-		{`foo: bar`, yjq.Object, map[string]interface{}{"foo": "bar"}, false},
-		{`[1,2,3]`, yjq.Array, []interface{}{1, 2, 3}, false},
-		{`42.0`, yjq.Number, 42.0, false},
-		{`"foo"`, yjq.String, "foo", false},
-		{`true`, yjq.Boolean, true, false},
-		{`false`, yjq.Boolean, false, false},
+		{`null`, ycat.Null, (interface{})(nil), false},
+		{``, ycat.Null, (interface{})(nil), false},
+		{`foo: bar`, ycat.Object, map[string]interface{}{"foo": "bar"}, false},
+		{`[1,2,3]`, ycat.Array, []interface{}{1, 2, 3}, false},
+		{`42.0`, ycat.Number, 42.0, false},
+		{`"foo"`, ycat.String, "foo", false},
+		{`true`, ycat.Boolean, true, false},
+		{`false`, ycat.Boolean, false, false},
 	} {
-		v := yjq.Value{}
+		v := ycat.Value{}
 		err := yaml.Unmarshal([]byte(tc.YAML), &v)
 		if err != nil {
 			t.Errorf("%q Unexpected error: %s", tc.YAML, err)

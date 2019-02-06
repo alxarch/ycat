@@ -1,90 +1,124 @@
-# yjq
+# ycat
 
-YAML wrapper for [jq](https://stedolan.github.io/jq/) commandline JSON processor
+Comand line processor for YAML/JSON files using [Jsonnet](https://jsonnet.org/)
 
 ```
-Usage: yjq [JQ_ARG...]
-       yjq [options] [YAML_FILES...] -- [JQ_ARG...]
+Usage: ycat [options|files...]
 
 Options:
-      --cmd string    Name of the jq command (default "jq")
-  -h, --help          Show usage and exit
-  -i, --yaml-input    Convert YAML input to JSON
-  -o, --yaml-output   Convert JSON output to YAML
+    -h, --help                   Show help and exit
+    -y, --yaml [files...]        Read YAML values from file(s)
+    -j, --json [files...]        Read JSON values from file(s)
+    -o, --out {json|j|yaml|y}    Set output format
+        --to-json                Output JSON one value per line (same as -o json, -oj)
+    -a, --array                  Merge output values into an array
+    -e, --eval <snippet>         Process values with Jsonnet
+    -m, --module <var>=<file>    Load Jsonnet module into a local Jsonnet variable
+        --bind <var>             Bind input value to a local Jsonnet variable (default _)
 ```
-
-
-## Usage
-
-```
-yjq [JQ_ARG...] 
-```
-
-By default all arguments are forwarded to `jq` and input/output is YAML. For example:
-```
-$ echo 'name: foo' | yjq '.name+="_bar"'
-name: foo_bar
-```
-
-If there's a `--` argument, all arguments up to `--` are handled by `yjq`
-and the rest are forwarded to `jq`.
-```
-yjq [options] [YAML_FILES...] -- [JQ_ARG...]
-```
-For example:
-```
-$ echo 'name: foo' | yjq -i -- '.name+="_bar"'
-{
-  "name": "foo_bar"
-}
-```
-
-### Options
-
-  - `-i`, `--yaml-input` Convert YAML input from `stdin` to JSON
-  - `-o`, `--yaml-output` Convert JSON output to YAML
-  - `--cmd <JQ>` Specify alternative jq command (default "jq")
-
-If neither `-i|--yaml-input` nor `-o|--yaml-output` is specified both input and output is YAML.
 
 ### Arguments
+
+All non-option arguments are files to read from.
+Format is guessed from extension and fallsback to YAML.
+
+If filename is `-` values are read from stdin using the last specified format or YAML
   
-If `stdin` is not piped, `yjq` arguments are assumed to be YAML files to pipe to `jq` as JSON. If there are no arguments, interactive input from `stdin` is used (exit by sending `EOF` with `Ctrl-D`).
+## Examples
 
-## YAML Input
+Concatenate files to a single YAML stream (type is selected from extension)
 
-Multiple YAML values separated by `---` are passed to `jq` as separate values.
-To combine them in an array use `jq`'s `-s|--slurp` option.
+```
+$ ycat foo.yaml bar.yaml baz.json
+```
 
+Concatenate files to single JSON stream (one item per-line)
 
-## YAML Output
+```
+$ ycat --to-json foo.yaml bar.yaml baz.json
+$ ycat -o j foo.yaml bar.yaml baz.json
+```
 
-Results from `jq`'s output are separated by `---` in a single YAML value stream.
+Concatenate JSON values from `stdin` to a single YAML file
+
+```
+$ ycat -j
+```
+
+Concatenate YAML from `a.txt`, `stdin`, `b.yaml` and JSON from `a.json`, 
+
+```
+$ ycat -y a.txt - b.txt -j a.json
+```
+
+Concatenate to YAML array
+
+```
+$ ycat -a a.json b.yaml
+```
+
+Concatenate YAML from `a.yaml` and `b.yaml` setting key `foo` to `bar` on each top level object
+
+```
+$ ycat a.yaml b.yaml -e '_+{foo: "bar"}'
+```
+
+Add kubernetes namespace `foo` to all resources without namespace
+
+```
+$ ycat -e '_ + { metadata +: { namespace: if "namespace" in super then super.namespace else "foo" }}' *.yaml
+```
+
+Process with [jq](http://stedolan.github.io/jq/) using a pipe
+
+```
+$ ycat -oj a.yaml b.json | jq ... | ycat 
+```
 
 ## Installation
 
-Download an executable for your platform from github [releases]( https://github.com/alxarch/yjq/releases/latest).
+Download an executable for your platform from github [releases]( https://github.com/alxarch/ycat/releases/latest).
 
 Alternatively, assuming `$GOPATH/bin` is in `$PATH` just
 
 ```
-go get github.com/alxarch/yjq
+go get github.com/alxarch/ycat
 ```
 
-## Caveats
 
-When input is YAML `jq` argument `-R|--raw-input` is not supported and gets dropped.
 
-When output is YAML the following `jq` arguments ara not supported and get dropped:
-  - `-r|--raw-output`
-  - `-a|--ascii-output`
-  - `-C|--color-output`
-  - `-j|--join-output`
-  - `--tab`
-  - `--indent`
-  - `-c|--compact-output`
+## YAML Input
+
+Multiple YAML values separated by `---\n` are processed separately.
+Value reading stops at `...\n` or `EOF`.
+
+## JSON Input
+
+Multiple JSON values separated by whitespace are processed separately.
+Value reading stops at `EOF`.
+
+## YAML Output
+
+Each result value is appended to the output with `---\n` separator.
+
+## JSON Output
+
+Each result value is appended into a new line of output.
+
+## Jsonnet
+
+[Jsonnet](https://jsonnet.org/) is a templating language from google that's really versatile in handling configuration files. Visit their site for more information.
+
+Each value is bound to a local variable named `_` inside the snippet by default. Use `--bind` to change the name.
+
+To use `Jsonnet` code from a file in the snippet use `-m <var>=<file>` and the exported value will be available as
+a local variable in the snippet.
 
 ## TODO
 
-  - Add support for flow style YAML output, especially in long string values
-  - Intercept file arguments passed to `jq` and handle the ones with `.yaml,.yml` extension
+  - Add support for pretty printed output
+  - Add support for reading .txt files
+  - Add support for reading files as base64
+  - Add support for reading files as hex
+  - Add support for Jsonnet libraries
+  - Add support for sorting by JSONPath
