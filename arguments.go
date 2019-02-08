@@ -18,20 +18,19 @@ USAGE:
     ycat [OPTIONS] [INPUT...]
     ycat [OPTIONS] [PIPELINE...]
 
-PIPELINE:
-    [INPUT...] [ENV...] EVAL
-
 OPTIONS:
-    -h, --help                   Show help and exit
     -o, --out {json|j|yaml|y}    Set output format
-        --to-json                Output JSON one value per line (same as -o json, -oj)
+    -h, --help                   Show help and exit
 
 INPUT:
-    [FILE...]                   Read values from file(s)
-    -y, --yaml [FILE...]        Read YAML values from file(s)
-    -j, --json [FILE...]        Read JSON values from file(s)
-    -n, --null                  Inject a null value 
-    -a, --array                 Merge values to array
+    [FILE...]                    Read values from file(s)
+    -y, --yaml [FILE...]         Read YAML values from file(s)
+    -j, --json [FILE...]         Read JSON values from file(s)
+    -n, --null                   Inject a null value 
+    -a, --array                  Merge values to array
+
+PIPELINE:
+    [INPUT...] [ENV...] EVAL
 
 ENV:
     -v, --var <VAR>=<CODE>       Bind Jsonnet variable to code
