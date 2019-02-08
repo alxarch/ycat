@@ -111,6 +111,9 @@ func (p Pipeline) RunTask(ctx context.Context, task StreamTask) Pipeline {
 
 func ReadFromTask(r io.Reader, format Format) StreamTask {
 	return StreamFunc(func(s Stream) error {
+		if err := Drain(s); err != nil {
+			return err
+		}
 		dec := NewDecoder(r, format)
 		for {
 			v := new(Value)
@@ -122,6 +125,7 @@ func ReadFromTask(r io.Reader, format Format) StreamTask {
 				// println("read err", err.Error())
 				return err
 			}
+
 			if !s.Push(v) {
 				// println("push failed")
 				return nil
