@@ -83,14 +83,14 @@ type Encoder interface {
 	Encode(x interface{}) error
 }
 
-func NewEncoder(w io.Writer, format Format) Encoder {
+func NewEncoder(w io.Writer, format Output) Encoder {
 	switch format {
-	case JSON:
+	case OutputJSON:
 		return json.NewEncoder(w)
-	case YAML:
-		return yaml.NewEncoder(w)
+	case OutputYAML:
+		fallthrough
 	default:
-		panic("Invalid format")
+		return yaml.NewEncoder(w)
 	}
 
 }

@@ -24,17 +24,18 @@ func printUsage(err error) {
 }
 
 func main() {
-	args := ycat.Arguments{}
-	if err := args.Parse(os.Args[1:]); err != nil {
+	tasks, help, err := ycat.ParseArgs(os.Args[1:])
+	if err != nil {
 		printUsage(err)
 		os.Exit(2)
 	}
-	if args.Help {
+	if help {
 		printUsage(nil)
 		os.Exit(0)
 	}
 
-	p := args.Run(context.Background())
+	ctx := context.Background()
+	p := ycat.BlankPipeline().Pipe(ctx, tasks...)
 	exitCode := 0
 	for err := range p.Errors() {
 		if err != nil {

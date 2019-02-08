@@ -131,7 +131,7 @@ func ReadFromTask(r io.Reader, format Format) StreamTask {
 	})
 }
 
-func StreamWriteTo(w io.WriteCloser, format Format) StreamTask {
+func StreamWriteTo(w io.WriteCloser, format Output) StreamTask {
 	return StreamFunc(func(s Stream) error {
 		defer w.Close()
 		enc := NewEncoder(w, format)
@@ -150,16 +150,23 @@ func StreamWriteTo(w io.WriteCloser, format Format) StreamTask {
 	})
 }
 
-func NullStream(s Stream) error {
+type NullStream struct{}
+
+func (NullStream) Run(s Stream) error {
 	s.Push(&Value{Null, nil})
 	return nil
 }
-
-func ToArrayTask() StreamTask {
-	return StreamFunc(StreamToArray)
+func (NullStream) Size(_ context.Context) int {
+	return 0
 }
 
-func StreamToArray(s Stream) (err error) {
+type ToArray struct{}
+
+func (ToArray) Size(_ context.Context) int {
+	return 0
+}
+
+func (ToArray) Run(s Stream) (err error) {
 	var arr []*Value
 	for {
 		v, ok := s.Next()

@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"text/template"
 
 	jsonnet "github.com/google/go-jsonnet"
 )
@@ -40,13 +39,6 @@ func (e *Eval) AddVar(typ VarType, name, value string) {
 	e.Vars[name] = Var{typ, value}
 }
 
-var tplSnippet = template.Must(template.New("snippet").Parse(`
-{{- range $name, $value := .Vars }}
-local {{.Name}} = std.extVar("{{$name}}");
-{{- end }}
-local {{.Bind}} = std.extVar("{{.Bind}}");
-{{.Snippet}}`))
-
 // Render renders the Jsonnet snippet to be executed
 func (v Var) Render(w *strings.Builder, name string) {
 	w.WriteString("local ")
@@ -71,7 +63,7 @@ func (v Var) Render(w *strings.Builder, name string) {
 	}
 
 }
-func (e *Eval) Render() string {
+func (e *Eval) Render(bind string) string {
 	if e.Snippet == "" {
 		return ""
 	}
@@ -79,18 +71,14 @@ func (e *Eval) Render() string {
 	for name, v := range e.Vars {
 		v.Render(&w, name)
 	}
-	Var{Type: CodeVar}.Render(&w, e.Bind)
+	Var{Type: CodeVar}.Render(&w, bind)
 	return w.String()
 }
 
-func (e *Eval) VM() *jsonnet.VM {
-	if e.Snippet == "" {
-		return nil
+func (e *Eval) VM(vm *jsonnet.VM) *jsonnet.VM {
+	if vm == nil {
+		vm = jsonnet.MakeVM()
 	}
-	if e.Bind == "" {
-		e.Bind = "x"
-	}
-	vm := jsonnet.MakeVM()
 	if e.MaxStackSize > 0 {
 		vm.MaxStack = e.MaxStackSize
 	}
@@ -111,19 +99,14 @@ func (e *Eval) VM() *jsonnet.VM {
 
 }
 
-// Pipeline builds a processing pipeline step
-func (e *Eval) StreamTask() StreamTask {
-	snippet := e.Render()
-	if snippet == "" {
-		return nil
+const DefaultInputVar = "x"
+
+// EvalTask transforms a stream of input values with Jsonnet
+func EvalTask(vm *jsonnet.VM, bind, filename, snippet string) StreamTask {
+	if bind == "" {
+		bind = DefaultInputVar
 	}
 	return StreamFunc(func(s Stream) error {
-		vm := e.VM()
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		filename := path.Join(cwd, "ycat.jsonnet")
 		for {
 			v, ok := s.Next()
 			if !ok {
@@ -133,7 +116,7 @@ func (e *Eval) StreamTask() StreamTask {
 			if err != nil {
 				return err
 			}
-			vm.ExtCode(e.Bind, string(raw))
+			vm.ExtCode(bind, string(raw))
 			val, err := vm.EvaluateSnippet(filename, snippet)
 			if err != nil {
 				return err
@@ -147,4 +130,12 @@ func (e *Eval) StreamTask() StreamTask {
 			}
 		}
 	})
+}
+
+func EvalFilename() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return path.Join(cwd, "ycat.jsonnet"), nil
 }
