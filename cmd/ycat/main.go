@@ -24,7 +24,7 @@ func printUsage(err error) {
 }
 
 func main() {
-	tasks, help, err := ycat.ParseArgs(os.Args[1:])
+	tasks, help, err := ycat.ParseArgs(os.Args[1:], os.Stdin, os.Stdout)
 	if err != nil {
 		printUsage(err)
 		os.Exit(2)

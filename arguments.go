@@ -3,7 +3,7 @@ package ycat
 import (
 	"errors"
 	"fmt"
-	"os"
+	"io"
 	"strconv"
 	"strings"
 
@@ -109,24 +109,20 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 			return argv, err
 		}
 		eval := EvalTask(p.vm, e.Bind, filename, snippet)
-		if input := p.inputTask(); len(input) == 0 {
-			p.tasks = append(p.tasks, eval)
-		} else {
-			p.tasks = append(p.tasks, input, eval)
-		}
+		p.addTask(eval)
 	case "output":
 		value, argv = shiftArgV(value, argv)
 		if p.output = OutputFromString(value); p.output == OutputInvalid {
 			return argv, fmt.Errorf("Invalid output format: %q", value)
 		}
 	case "null":
-		p.input = append(p.input[:0], NullStream{})
+		p.input = append(p.input, NullStream{})
 	case "to-json":
 		p.output = OutputJSON
 	case "help":
 		p.help = true
 	case "array":
-		p.tasks = append(p.tasks, ToArray{})
+		p.addTask(ToArray{})
 	case "yaml":
 		return p.parseFiles(value, argv, YAML), nil
 	case "json":
@@ -137,12 +133,13 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 	return argv, nil
 }
 
-// func (p *argParser) lastTask() StreamTask {
-// 	if len(p.tasks) > 0 {
-// 		return p.tasks[len(p.tasks)-1]
-// 	}
-// 	return nil
-// }
+func (p *argParser) addTask(t StreamTask) {
+	if input := p.inputTask(); input == nil {
+		p.tasks = append(p.tasks, t)
+	} else {
+		p.tasks = append(p.tasks, input, t)
+	}
+}
 
 func (p *argParser) parseShort(a string, argv []string) ([]string, error) {
 	for ; len(a) > 0; a = a[1:] {
@@ -206,6 +203,8 @@ func isOption(a string) bool {
 
 type argParser struct {
 	vm     *jsonnet.VM
+	stdin  io.Reader
+	stdout io.WriteCloser
 	eval   *Eval
 	output Output
 	input  []StreamTask
@@ -215,12 +214,24 @@ type argParser struct {
 }
 
 func (p *argParser) addFile(path string, format Format) {
-	f := InputFile{format, path}
-	p.input = append(p.input, &f)
+	if format == Auto {
+		format = DetectFormat(path)
+	}
+	switch path {
+	case "", "-":
+		// Handle here to be able to test stdin
+		p.input = append(p.input, ReadFromTask(p.stdin, format))
+	default:
+		f := InputFile{format, path}
+		p.input = append(p.input, &f)
+	}
 }
 
-func ParseArgs(argv []string) ([]StreamTask, bool, error) {
-	p := argParser{}
+func ParseArgs(argv []string, stdin io.Reader, stdout io.WriteCloser) ([]StreamTask, bool, error) {
+	p := argParser{
+		stdin:  stdin,
+		stdout: stdout,
+	}
 	if err := p.Parse(argv); err != nil {
 		return nil, false, err
 	}
@@ -237,7 +248,7 @@ func (p *argParser) Parse(argv []string) (err error) {
 				if len(a) == 2 {
 					// Special -- arg
 					for _, a := range argv {
-						p.addFile(a, DetectFormat(a))
+						p.addFile(a, Auto)
 					}
 					return
 				}
@@ -254,18 +265,20 @@ func (p *argParser) Parse(argv []string) (err error) {
 }
 func (p *argParser) Tasks() (tasks []StreamTask) {
 	tasks = append(tasks, p.tasks...)
-	if len(tasks) == 0 {
-		tasks = append(tasks, p.inputTask())
+	if task := p.inputTask(); task != nil {
+		tasks = append(tasks, task)
+	} else if len(tasks) == 0 {
+		tasks = append(tasks, ReadFromTask(p.stdin, YAML))
 	}
-
-	return append(tasks, StreamWriteTo(os.Stdout, p.output))
+	tasks = append(tasks, StreamWriteTo(p.stdout, p.output))
+	return tasks
 }
 
-func (p *argParser) inputTask() (s StreamTaskSequence) {
+func (p *argParser) inputTask() (s StreamTask) {
 	if p.input == nil {
-		return append(s, ReadFromTask(os.Stdin, YAML))
+		return nil
 	}
-	s = append(s, p.input...)
-	p.input = p.input[:0]
+	s = StreamTaskSequence(p.input)
+	p.input = nil
 	return
 }

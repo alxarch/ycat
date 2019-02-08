@@ -70,7 +70,6 @@ func (s *stream) Push(v *Value) bool {
 	case s.out <- v:
 		return true
 	case <-s.done:
-		println("push s.done", false)
 		return false
 	}
 }
@@ -111,6 +110,7 @@ func (p Pipeline) RunTask(ctx context.Context, task StreamTask) Pipeline {
 
 func ReadFromTask(r io.Reader, format Format) StreamTask {
 	return StreamFunc(func(s Stream) error {
+		// Needed for reading in the middle of a pipeline
 		if err := Drain(s); err != nil {
 			return err
 		}

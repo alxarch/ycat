@@ -42,6 +42,22 @@ type InputFile struct {
 	Path   string
 }
 
+type InputFiles []InputFile
+
+func (files InputFiles) Run(s Stream) error {
+	for i := range files {
+		f := &files[i]
+		if err := f.Run(s); err != nil {
+			return err
+		}
+	}
+	return nil
+
+}
+func (InputFiles) Size(ctx context.Context) int {
+	return 0
+}
+
 type Output int
 
 const (
@@ -96,25 +112,14 @@ func NewEncoder(w io.Writer, format Output) Encoder {
 }
 
 func (f *InputFile) Size(_ context.Context) int {
-	return 2
+	return 0
 }
 
 func (f *InputFile) Run(s Stream) error {
-	format := f.Format
-	if format == Auto {
-		format = DetectFormat(f.Path)
+	r, err := os.Open(f.Path)
+	if err != nil {
+		return err
 	}
-	var r io.Reader
-	switch f.Path {
-	case "", "-":
-		r = os.Stdin
-	default:
-		f, err := os.Open(f.Path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		r = f
-	}
-	return ReadFromTask(r, format).Run(s)
+	defer r.Close()
+	return ReadFromTask(r, f.Format).Run(s)
 }
