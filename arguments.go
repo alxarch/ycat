@@ -14,27 +14,39 @@ import (
 const Usage = `
 ycat - command line YAML/JSON processor
 
-Usage: ycat [options|files...]
+USAGE:
+    ycat [OPTIONS] [INPUT...]
+    ycat [OPTIONS] [PIPELINE...]
 
-Options:
+PIPELINE:
+    [INPUT...] [ENV...] EVAL
+
+OPTIONS:
     -h, --help                   Show help and exit
-    -y, --yaml [files...]        Read YAML values from file(s)
-    -j, --json [files...]        Read JSON values from file(s)
-    -n, --null                   Use null value input (no reading)
     -o, --out {json|j|yaml|y}    Set output format
         --to-json                Output JSON one value per line (same as -o json, -oj)
-    -a, --array                  Merge values into an array
-    -e, --eval <snippet>         Process values with Jsonnet
-    -v, --var <var>=<code>       Bind Jsonnet variable to code
-              <var>==<value>     Bind Jsonnet variable to a string value
-    -i, --import <var>=<file>    Import file into a local Jsonnet variable
-        --input-var <var>        Change the name of the input value variable (default x) 
-        --max-stack <size>       Jsonnet VM max stack size (default 500)
 
-If no files are specified values are read from stdin.
-Using "-" as a file path will read values from stdin.
-Files without a format option will be parsed as YAML unless
-they end in ".json".
+INPUT:
+    [FILE...]                   Read values from file(s)
+    -y, --yaml [FILE...]        Read YAML values from file(s)
+    -j, --json [FILE...]        Read JSON values from file(s)
+    -n, --null                  Inject a null value 
+    -a, --array                 Merge values to array
+
+ENV:
+    -v, --var <VAR>=<CODE>       Bind Jsonnet variable to code
+              <VAR>==<VALUE>     Bind Jsonnet variable to a string value
+    -i, --import <VAR>=<FILE>    Import file into a local Jsonnet variable
+        --input-var <VAR>        Change the name of the input value variable (default x) 
+        --max-stack <SIZE>       Jsonnet VM max stack size (default 500)
+
+EVAL:
+    -e, --eval <SNIPPET>         Process values with Jsonnet
+
+
+If no INPUT is specified, values are read from stdin as YAML.
+If FILE is "-" or "" values are read from stdin until EOF.
+If FILE has no type option format is detected from extension.
 `
 
 func splitArgV(s string) (string, string) {
