@@ -103,7 +103,7 @@ Download an executable for your platform from github [releases]( https://github.
 Alternatively, assuming `$GOPATH/bin` is in `$PATH` just
 
 ```
-go get github.com/alxarch/ycat
+go get github.com/alxarch/ycat/cmd/ycat
 ```
 
 
