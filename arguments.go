@@ -2,8 +2,10 @@ package ycat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -17,12 +19,16 @@ Options:
     -h, --help                   Show help and exit
     -y, --yaml [files...]        Read YAML values from file(s)
     -j, --json [files...]        Read JSON values from file(s)
+    -n, --null                   Use null value input (no reading)
     -o, --out {json|j|yaml|y}    Set output format
         --to-json                Output JSON one value per line (same as -o json, -oj)
-    -a, --array                  Merge output values into an array
+    -a, --array                  Merge values into an array
     -e, --eval <snippet>         Process values with Jsonnet
-    -m, --module <var>=<file>    Load Jsonnet module into a local Jsonnet variable
-        --bind <var>             Bind input value to a local Jsonnet variable (default _)
+    -v, --var <var>=<code>       Bind Jsonnet variable to code
+              <var>==<value>     Bind Jsonnet variable to a string value
+    -i, --import <var>=<file>    Import file into a local Jsonnet variable
+        --input-var <var>        Change the name of the input value variable (default x) 
+        --max-stack <size>       Jsonnet VM max stack size (default 500)
 
 If no files are specified values are read from stdin.
 Using "-" as a file path will read values from stdin.
@@ -35,6 +41,7 @@ type Arguments struct {
 	Output Output
 	Eval   Eval
 	Array  bool
+	Null   bool
 	Files  []InputFile
 }
 
@@ -81,17 +88,31 @@ func peekArg(args []string) (string, bool) {
 func (args *Arguments) parseLong(name, value string, argv []string) ([]string, error) {
 	switch name {
 	case "max-stack":
-		return nil, nil
-	case "bind":
+		value, argv = shiftArgV(value, argv)
+		size, err := strconv.Atoi(value)
+		if err != nil {
+			return argv, fmt.Errorf("Invalid max stack size: %s", err)
+		}
+		args.Eval.MaxStackSize = size
+	case "input-var":
 		value, argv = shiftArgV(value, argv)
 		args.Eval.Bind = value
-	case "module":
+	case "import":
 		value, argv = shiftArgV(value, argv)
 		name, file := splitArgV(value)
 		if file == "" {
-			return argv, fmt.Errorf("Invalid module value: %q", value)
+			return argv, errors.New("Missing import file")
 		}
-		args.Eval.AddModule(name, file)
+		args.Eval.AddVar(FileVar, name, file)
+	case "var":
+		value, argv = shiftArgV(value, argv)
+		name, value := splitArgV(value)
+		typ := RawVar
+		if len(value) > 0 && value[0] == '=' {
+			value = value[1:]
+			typ = CodeVar
+		}
+		args.Eval.AddVar(typ, name, value)
 	case "eval":
 		if value, argv = shiftArgV(value, argv); value == "--" {
 			value = strings.Join(argv, " ")
@@ -103,12 +124,18 @@ func (args *Arguments) parseLong(name, value string, argv []string) ([]string, e
 		if args.Output = OutputFromString(value); args.Output == OutputInvalid {
 			return argv, fmt.Errorf("Invalid output format: %q", value)
 		}
+	case "null":
+		args.Null = true
 	case "to-json":
 		args.Output = OutputJSON
 	case "help":
 		args.Help = true
 	case "array":
-		args.Array = true
+		if args.Eval.Snippet == "" {
+			args.Array = true
+		} else {
+			args.Eval.Array = true
+		}
 	case "yaml":
 		return args.parseFiles(value, argv, YAML), nil
 	case "json":
@@ -126,12 +153,16 @@ func (args *Arguments) parseShort(a string, argv []string) ([]string, error) {
 			return args.parseFiles(a[1:], argv, JSON), nil
 		case 'y':
 			return args.parseFiles(a[1:], argv, YAML), nil
-		case 'm':
-			return args.parseLong("module", a[1:], argv)
+		case 'i':
+			return args.parseLong("import", a[1:], argv)
+		case 'v':
+			return args.parseLong("var", a[1:], argv)
 		case 'e':
 			return args.parseLong("eval", a[1:], argv)
 		case 'o':
 			return args.parseLong("output", a[1:], argv)
+		case 'n':
+			args.Null = true
 		case 'a':
 			args.Array = true
 		case 'h':
@@ -183,35 +214,49 @@ func isOption(a string) bool {
 	return len(a) > 1 && a[0] == '-' && (a[1] != '-' || len(a) > 2)
 }
 
-func (args *Arguments) Run(ctx context.Context) <-chan error {
-	ctx, cancel := withCancel(ctx)
-	defer cancel()
+func withCancel(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithCancel(ctx)
+}
+func (args *Arguments) Run(ctx context.Context) Pipeline {
 
-	var steps []PipelineFunc
-	if len(args.Files) == 0 {
-		steps = append(steps, ReadFrom(os.Stdin, YAML))
+	var (
+		tasks []StreamTask
+		input []StreamTask
+	)
+
+	if args.Null {
+		input = append(input, StreamFunc(NullStream))
+	} else if len(args.Files) == 0 {
+		input = append(input, ReadFromTask(os.Stdin, YAML))
 	} else {
-		steps = append(steps, ReadFiles(args.Files...))
+		for i := range args.Files {
+			input = append(input, &args.Files[i])
+		}
 	}
 
-	if eval, err := args.Eval.Pipeline(); err != nil {
-		return wrapErr(err)
-	} else if eval != nil {
-		steps = append(steps, eval)
-	}
+	tasks = append(tasks, StreamTaskSequence(input))
 
 	if args.Array {
-		steps = append(steps, ToArray)
+		tasks = append(tasks, StreamFunc(StreamToArray))
+	}
+
+	if eval := args.Eval.StreamTask(); eval != nil {
+		tasks = append(tasks, eval)
+		if args.Eval.Array {
+			tasks = append(tasks, StreamFunc(StreamToArray))
+		}
 	}
 
 	switch args.Output {
 	case OutputJSON:
-		steps = append(steps, WriteTo(os.Stdout, JSON))
+		tasks = append(tasks, StreamWriteTo(os.Stdout, JSON))
 	default:
-		steps = append(steps, WriteTo(os.Stdout, YAML))
+		tasks = append(tasks, StreamWriteTo(os.Stdout, YAML))
 	}
 
-	_, errc := BuildPipeline(ctx, steps...)
-	return errc
+	return BlankPipeline().Pipe(ctx, tasks...)
 
 }

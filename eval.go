@@ -1,9 +1,9 @@
 package ycat
 
 import (
-	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
+	"path"
 	"strings"
 	"text/template"
 
@@ -12,64 +12,129 @@ import (
 
 // Eval handles Jsonnet snippet evaluation
 type Eval struct {
-	Bind    string
-	Snippet string
-	Modules map[string]string
+	Bind         string
+	Snippet      string
+	MaxStackSize int
+	Array        bool
+	Vars         map[string]Var
+}
+type VarType uint
+
+const (
+	_ VarType = iota
+	FileVar
+	CodeVar
+	RawVar
+)
+
+type Var struct {
+	Type  VarType
+	Value string
 }
 
 // AddModule adds a module to the snippet
-func (e *Eval) AddModule(name, path string) {
-	if e.Modules == nil {
-		e.Modules = make(map[string]string)
+func (e *Eval) AddVar(typ VarType, name, value string) {
+	if e.Vars == nil {
+		e.Vars = make(map[string]Var)
 	}
-	e.Modules[name] = path
+	e.Vars[name] = Var{typ, value}
 }
 
 var tplSnippet = template.Must(template.New("snippet").Parse(`
-{{- range $name, $_ := .Modules }}
-local {{$name}} = std.extVar("{{$name}}");
+{{- range $name, $value := .Vars }}
+local {{.Name}} = std.extVar("{{$name}}");
 {{- end }}
 local {{.Bind}} = std.extVar("{{.Bind}}");
 {{.Snippet}}`))
 
 // Render renders the Jsonnet snippet to be executed
-func (e *Eval) Render() (string, error) {
-	w := strings.Builder{}
-	if err := tplSnippet.Execute(&w, e); err != nil {
-		return "", err
+func (v Var) Render(w *strings.Builder, name string) {
+	w.WriteString("local ")
+	w.WriteString(name)
+	w.WriteString(" = ")
+	switch v.Type {
+	case FileVar:
+		switch path.Ext(v.Value) {
+		case ".json", ".libsonnet", ".jsonnet":
+			w.WriteString(`import("`)
+		case ".yaml", ".yml":
+			w.WriteString(`importyaml("`)
+		default:
+			w.WriteString(`importstr("`)
+		}
+		w.WriteString(v.Value)
+		w.WriteString("\");\n")
+	default:
+		w.WriteString(`std.extVar("`)
+		w.WriteString(name)
+		w.WriteString("\");\n")
 	}
-	return w.String(), nil
+
+}
+func (e *Eval) Render() string {
+	if e.Snippet == "" {
+		return ""
+	}
+	w := strings.Builder{}
+	for name, v := range e.Vars {
+		v.Render(&w, name)
+	}
+	Var{Type: CodeVar}.Render(&w, e.Bind)
+	return w.String()
+}
+
+func (e *Eval) VM() *jsonnet.VM {
+	if e.Snippet == "" {
+		return nil
+	}
+	if e.Bind == "" {
+		e.Bind = "x"
+	}
+	vm := jsonnet.MakeVM()
+	if e.MaxStackSize > 0 {
+		vm.MaxStack = e.MaxStackSize
+	}
+
+	//TODO: [eval] Add FileImporter and -J search dir args
+	//TODO: [eval] Define some default helpers (ie sortBy) and bind them to _
+	for name, v := range e.Vars {
+		switch v.Type {
+		case FileVar:
+			// Handled by import
+		case CodeVar:
+			vm.ExtCode(name, v.Value)
+		default:
+			vm.ExtVar(name, v.Value)
+		}
+	}
+	return vm
+
 }
 
 // Pipeline builds a processing pipeline step
-func (e *Eval) Pipeline() (PipelineFunc, error) {
-	if e.Snippet == "" {
-		return nil, nil
+func (e *Eval) StreamTask() StreamTask {
+	snippet := e.Render()
+	if snippet == "" {
+		return nil
 	}
-	if e.Bind == "" {
-		e.Bind = "_"
-	}
-	snippet, err := e.Render()
-	if err != nil {
-		return nil, err
-	}
-	vm := jsonnet.MakeVM()
-	//TODO: Add FileImporter
-	for name, path := range e.Modules {
-		data, err := ioutil.ReadFile(path)
+	return StreamFunc(func(s Stream) error {
+		vm := e.VM()
+		cwd, err := os.Getwd()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		vm.ExtCode(name, string(data))
-	}
-	return func(ctx context.Context, in <-chan *Value, out chan<- *Value) error {
-		for v := range in {
+		filename := path.Join(cwd, "ycat.jsonnet")
+		for {
+			v, ok := s.Next()
+			if !ok {
+				return nil
+			}
 			raw, err := json.Marshal(v)
 			if err != nil {
 				return err
 			}
 			vm.ExtCode(e.Bind, string(raw))
-			val, err := vm.EvaluateSnippet("", snippet)
+			val, err := vm.EvaluateSnippet(filename, snippet)
 			if err != nil {
 				return err
 			}
@@ -77,12 +142,9 @@ func (e *Eval) Pipeline() (PipelineFunc, error) {
 			if err := json.Unmarshal([]byte(val), result); err != nil {
 				return err
 			}
-			select {
-			case out <- result:
-			case <-ctx.Done():
+			if !s.Push(result) {
 				return nil
 			}
 		}
-		return nil
-	}, nil
+	})
 }

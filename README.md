@@ -9,12 +9,16 @@ Options:
     -h, --help                   Show help and exit
     -y, --yaml [files...]        Read YAML values from file(s)
     -j, --json [files...]        Read JSON values from file(s)
+    -n, --null                   Use null value input (no reading)
     -o, --out {json|j|yaml|y}    Set output format
         --to-json                Output JSON one value per line (same as -o json, -oj)
-    -a, --array                  Merge output values into an array
+    -a, --array                  Merge values into an array
     -e, --eval <snippet>         Process values with Jsonnet
-    -m, --module <var>=<file>    Load Jsonnet module into a local Jsonnet variable
-        --bind <var>             Bind input value to a local Jsonnet variable (default _)
+    -v, --var <var>=<code>       Bind Jsonnet variable to code
+              <var>==<value>     Bind Jsonnet variable to a string value
+    -i, --import <var>=<file>    Import file into a local Jsonnet variable
+        --input-var <var>        Change the name of the input value variable (default x) 
+        --max-stack <size>       Jsonnet VM max stack size (default 500)
 ```
 
 ### Arguments
@@ -60,13 +64,13 @@ $ ycat -a a.json b.yaml
 Concatenate YAML from `a.yaml` and `b.yaml` setting key `foo` to `bar` on each top level object
 
 ```
-$ ycat a.yaml b.yaml -e '_+{foo: "bar"}'
+$ ycat a.yaml b.yaml -e 'x+{foo: "bar"}'
 ```
 
 Add kubernetes namespace `foo` to all resources without namespace
 
 ```
-$ ycat -e '_ + { metadata +: { namespace: if "namespace" in super then super.namespace else "foo" }}' *.yaml
+$ ycat -e 'x + { metadata +: { namespace: if "namespace" in super then super.namespace else "foo" }}' *.yaml
 ```
 
 Process with [jq](http://stedolan.github.io/jq/) using a pipe
@@ -109,7 +113,7 @@ Each result value is appended into a new line of output.
 
 [Jsonnet](https://jsonnet.org/) is a templating language from google that's really versatile in handling configuration files. Visit their site for more information.
 
-Each value is bound to a local variable named `_` inside the snippet by default. Use `--bind` to change the name.
+Each value is bound to a local variable named `x` inside the snippet by default. Use `--bind` to change the name.
 
 To use `Jsonnet` code from a file in the snippet use `-m <var>=<file>` and the exported value will be available as
 a local variable in the snippet.

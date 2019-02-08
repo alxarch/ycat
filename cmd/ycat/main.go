@@ -34,14 +34,13 @@ func main() {
 		os.Exit(0)
 	}
 
-	ok := true
-	for err := range args.Run(context.Background()) {
+	p := args.Run(context.Background())
+	exitCode := 0
+	for err := range p.Errors() {
 		if err != nil {
-			ok = false
+			exitCode = 2
 			logger.Println(err)
 		}
 	}
-	if !ok {
-		os.Exit(2)
-	}
+	os.Exit(exitCode)
 }

@@ -1,8 +1,10 @@
 package ycat
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
@@ -91,4 +93,28 @@ func NewEncoder(w io.Writer, format Format) Encoder {
 		panic("Invalid format")
 	}
 
+}
+
+func (f *InputFile) Size(_ context.Context) int {
+	return 2
+}
+
+func (f *InputFile) Run(s Stream) error {
+	format := f.Format
+	if format == Auto {
+		format = DetectFormat(f.Path)
+	}
+	var r io.Reader
+	switch f.Path {
+	case "", "-":
+		r = os.Stdin
+	default:
+		f, err := os.Open(f.Path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		r = f
+	}
+	return ReadFromTask(r, format).Run(s)
 }
