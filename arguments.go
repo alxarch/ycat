@@ -98,9 +98,11 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 		}
 		p.Eval().AddVar(typ, name, value)
 	case "eval":
+		value, argv = shiftArgV(value, argv)
 		e := p.Eval()
 		e.Snippet = value
 		snippet := e.Render(e.Bind)
+		// println("snippet", snippet)
 		p.vm = e.VM(p.vm)
 		filename, err := EvalFilename()
 		if err != nil {

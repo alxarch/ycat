@@ -64,6 +64,9 @@ func (v Var) Render(w *strings.Builder, name string) {
 
 }
 func (e *Eval) Render(bind string) string {
+	if bind == "" {
+		bind = DefaultInputVar
+	}
 	if e.Snippet == "" {
 		return ""
 	}
@@ -72,6 +75,7 @@ func (e *Eval) Render(bind string) string {
 		v.Render(&w, name)
 	}
 	Var{Type: CodeVar}.Render(&w, bind)
+	w.WriteString(e.Snippet)
 	return w.String()
 }
 
