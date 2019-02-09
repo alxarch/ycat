@@ -62,7 +62,7 @@ func (p *argParser) Parse(argv []string) (err error) {
 				if !ok {
 					return fmt.Errorf("Invalid short option: -%c", c)
 				}
-				argv, err = p.parseLong(name, a[1:], argv)
+				argv, err = p.parseLong(name, a[2:], argv)
 			}
 		} else {
 			p.addFile(a, Auto)
@@ -153,10 +153,10 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 	case "var":
 		value, argv = shiftArgV(value, argv)
 		name, value := splitArgV(value)
-		typ := RawVar
+		typ := CodeVar
 		if len(value) > 0 && value[0] == '=' {
 			value = value[1:]
-			typ = CodeVar
+			typ = RawVar
 		}
 		p.Eval().AddVar(typ, name, value)
 	case "eval":
