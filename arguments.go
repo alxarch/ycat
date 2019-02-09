@@ -162,9 +162,7 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 	case "eval":
 		value, argv = shiftArgV(value, argv)
 		e := p.Eval()
-		e.Snippet = value
-		snippet := e.Render(e.Bind)
-		// println("snippet", snippet)
+		snippet := e.Render(value)
 		p.vm = e.VM(p.vm)
 		filename, err := EvalFilename()
 		if err != nil {

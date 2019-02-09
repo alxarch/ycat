@@ -12,11 +12,11 @@ import (
 // Eval handles Jsonnet snippet evaluation
 type Eval struct {
 	Bind         string
-	Snippet      string
 	MaxStackSize int
 	Array        bool
 	Vars         map[string]Var
 }
+
 type VarType uint
 
 const (
@@ -31,7 +31,7 @@ type Var struct {
 	Value string
 }
 
-// AddModule adds a module to the snippet
+// AddVar adds an external variable
 func (e *Eval) AddVar(typ VarType, name, value string) {
 	if e.Vars == nil {
 		e.Vars = make(map[string]Var)
@@ -63,19 +63,15 @@ func (v Var) Render(w *strings.Builder, name string) {
 	}
 
 }
-func (e *Eval) Render(bind string) string {
-	if bind == "" {
-		bind = DefaultInputVar
-	}
-	if e.Snippet == "" {
-		return ""
-	}
+
+func (e *Eval) Render(snippet string) string {
 	w := strings.Builder{}
 	for name, v := range e.Vars {
 		v.Render(&w, name)
 	}
+	bind := bindVar(e.Bind)
 	Var{Type: CodeVar}.Render(&w, bind)
-	w.WriteString(e.Snippet)
+	w.WriteString(snippet)
 	return w.String()
 }
 
@@ -105,11 +101,16 @@ func (e *Eval) VM(vm *jsonnet.VM) *jsonnet.VM {
 
 const DefaultInputVar = "x"
 
+func bindVar(v string) string {
+	if v == "" {
+		return DefaultInputVar
+	}
+	return v
+}
+
 // EvalTask transforms a stream of input values with Jsonnet
 func EvalTask(vm *jsonnet.VM, bind, filename, snippet string) StreamTask {
-	if bind == "" {
-		bind = DefaultInputVar
-	}
+	bind = bindVar(bind)
 	return StreamFunc(func(s Stream) error {
 		for {
 			v, ok := s.Next()
