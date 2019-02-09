@@ -1,10 +1,8 @@
 package ycat
 
 import (
-	"context"
 	"encoding/json"
 	"io"
-	"os"
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
@@ -35,27 +33,6 @@ func DetectFormat(path string) Format {
 		return JSON
 	}
 	return YAML
-}
-
-type InputFile struct {
-	Format Format
-	Path   string
-}
-
-type InputFiles []InputFile
-
-func (files InputFiles) Run(s Stream) error {
-	for i := range files {
-		f := &files[i]
-		if err := f.Run(s); err != nil {
-			return err
-		}
-	}
-	return nil
-
-}
-func (InputFiles) Size(ctx context.Context) int {
-	return 0
 }
 
 type Output int
@@ -109,17 +86,4 @@ func NewEncoder(w io.Writer, format Output) Encoder {
 		return yaml.NewEncoder(w)
 	}
 
-}
-
-func (f *InputFile) Size(_ context.Context) int {
-	return 0
-}
-
-func (f *InputFile) Run(s Stream) error {
-	r, err := os.Open(f.Path)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-	return ReadFromTask(r, f.Format).Run(s)
 }

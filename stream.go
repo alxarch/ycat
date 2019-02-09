@@ -3,50 +3,59 @@ package ycat
 import (
 	"context"
 	"io"
-	"sync"
+	"os"
 )
 
-type Stream interface {
-	Next() (*Value, bool)
+type WriteStream interface {
 	Push(*Value) bool
+}
+type ReadStream interface {
+	Next() (*Value, bool)
+}
+type Stream interface {
+	ReadStream
+	WriteStream
 }
 type StreamTask interface {
 	Run(s Stream) error
-	Size(ctx context.Context) int
-}
-
-type StreamTaskSequence []StreamTask
-
-func (tasks StreamTaskSequence) Size(ctx context.Context) (size int) {
-	for _, task := range tasks {
-		if s := task.Size(ctx); s > size {
-			size = s
-		}
-	}
-	return
-}
-
-func (tasks StreamTaskSequence) Run(s Stream) error {
-	for _, task := range tasks {
-		if err := task.Run(s); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 type StreamFunc func(s Stream) error
 
-func (f StreamFunc) Run(s Stream) error {
+func (f StreamFunc) Run(s Stream) error { return f(s) }
+
+type Consumer interface {
+	Consume(s ReadStream) error
+}
+type ConsumerFunc func(s ReadStream) error
+
+func (f ConsumerFunc) Consume(s ReadStream) error { return f(s) }
+func (f ConsumerFunc) Run(s Stream) error         { return f(s) }
+
+type Producer interface {
+	Produce(s WriteStream) error
+}
+type ProducerFunc func(s WriteStream) error
+
+func (f ProducerFunc) Produce(s WriteStream) error { return f(s) }
+func (f ProducerFunc) Run(s Stream) error {
+	Drain(s)
 	return f(s)
 }
 
-func (f StreamFunc) Size(ctx context.Context) int {
-	var task StreamTask = f
-	if size, ok := ctx.Value(task).(int); ok {
-		return size
+type Producers []Producer
+
+// Run implements StreamTask for Producers
+func (tasks Producers) Run(s Stream) error { return tasks.Produce(s) }
+
+// Produce implements Producer for Producers
+func (tasks Producers) Produce(s WriteStream) error {
+	for _, task := range tasks {
+		if err := task.Produce(s); err != nil {
+			return err
+		}
 	}
-	return 0
+	return nil
 }
 
 type stream struct {
@@ -74,99 +83,66 @@ func (s *stream) Push(v *Value) bool {
 	}
 }
 
-func (p Pipeline) Pipe(ctx context.Context, tasks ...StreamTask) Pipeline {
-	ecs := make([]<-chan error, 0, len(tasks)+1)
-	ecs = append(ecs, p.Errors())
-	for _, t := range tasks {
-		p = p.RunTask(ctx, t)
-		ecs = append(ecs, p.Errors())
+func ReadFromFile(path string, format Format) ProducerFunc {
+	if format == Auto {
+		format = DetectFormat(path)
 	}
-	return Pipeline{p.Values(), MergeErrors(ecs...)}
-}
-func BlankPipeline() Pipeline {
-	out := make(chan *Value)
-	close(out)
-	errc := make(chan error)
-	close(errc)
-	return Pipeline{out, errc}
-}
-
-func (p Pipeline) RunTask(ctx context.Context, task StreamTask) Pipeline {
-	src := p.Values()
-	out := make(chan *Value, task.Size(ctx))
-	errc := make(chan error, 1)
-	s := stream{
-		done: ctx.Done(),
-		src:  src,
-		out:  out,
-	}
-	go func() {
-		defer close(errc)
-		defer close(out)
-		errc <- task.Run(&s)
-	}()
-	return Pipeline{out, errc}
-}
-
-func ReadFromTask(r io.Reader, format Format) StreamTask {
-	return StreamFunc(func(s Stream) error {
-		// Needed for reading in the middle of a pipeline
-		if err := Drain(s); err != nil {
+	return func(s WriteStream) error {
+		f, err := os.Open(path)
+		if err != nil {
 			return err
 		}
+		defer f.Close()
+		r := ReadFromTask(f, format)
+		return r(s)
+	}
+}
+
+func ReadFromTask(r io.Reader, format Format) ProducerFunc {
+	return func(s WriteStream) error {
 		dec := NewDecoder(r, format)
 		for {
 			v := new(Value)
 			if err := dec.Decode(v); err != nil {
 				if err == io.EOF {
-					// println("read eof")
 					return nil
 				}
-				// println("read err", err.Error())
 				return err
 			}
 
 			if !s.Push(v) {
-				// println("push failed")
 				return nil
 			}
-			// println("push ok")
 		}
-	})
+	}
 }
 
-func StreamWriteTo(w io.WriteCloser, format Output) StreamTask {
-	return StreamFunc(func(s Stream) error {
-		defer w.Close()
+func StreamWriteTo(w io.WriteCloser, format Output) ConsumerFunc {
+	return func(s ReadStream) error {
 		enc := NewEncoder(w, format)
+		defer w.Close()
 		for {
 			v, ok := s.Next()
 			if !ok {
-				// println("w no next")
 				return nil
 			}
-			// println("next")
 			if err := enc.Encode(v); err != nil {
-				// println("encode err")
 				return err
 			}
 		}
-	})
+	}
 }
 
 type NullStream struct{}
 
-func (NullStream) Run(s Stream) error {
+func (NullStream) Produce(s WriteStream) error {
 	s.Push(&Value{Null, nil})
 	return nil
-}
-func (NullStream) Size(_ context.Context) int {
-	return 0
 }
 
 type ToArray struct{}
 
-func (ToArray) Size(_ context.Context) int {
+func (ToArray) Init(_ context.Context) int {
 	return 0
 }
 
@@ -187,94 +163,44 @@ func (ToArray) Run(s Stream) (err error) {
 	return
 }
 
-type Pipeline struct {
-	values <-chan *Value
-	errors <-chan error
-}
-
-func (p *Pipeline) Errors() <-chan error {
-	if p.errors == nil {
-		ch := make(chan error)
-		close(ch)
-		p.errors = ch
-	}
-	return p.errors
-}
-func (p *Pipeline) Values() <-chan *Value {
-	if p.values == nil {
-		ch := make(chan *Value)
-		close(ch)
-		p.values = ch
-	}
-	return p.values
-}
-func MergeErrors(cs ...<-chan error) <-chan error {
-	switch n := len(cs); n {
-	case 1:
-		return cs[0]
-	case 0:
-		out := make(chan error)
-		close(out)
-		return out
-	default:
-		out := make(chan error, n)
-		wg := sync.WaitGroup{}
-		wg.Add(n)
-		for i := range cs {
-			c := cs[i]
-			go func() {
-				defer wg.Done()
-				for v := range c {
-					out <- v
-				}
-			}()
-		}
-		go func() {
-			defer close(out)
-			wg.Wait()
-		}()
-		return out
-	}
-}
-
-func Drain(s Stream) (err error) {
+func Drain(s Stream) bool {
 	for {
 		v, ok := s.Next()
 		if !ok {
-			return
+			return true
 		}
 		if !s.Push(v) {
-			return
+			return false
 		}
 	}
+
 }
 
-// func (tasks StreamTaskSequence) Run(ctx context.Context) (p *Pipeline) {
-// 	ecs := make([]<-chan error, 0, len(tasks))
-// 	values := make([]<-chan *Value, 0, len(tasks))
-// 	src := make(chan *Value)
-// 	close(src)
-// 	wg := sync.WaitGroup{}
-// 	wg.Add(len(tasks))
-// 	for _, t := range tasks {
-// 		p = RunTask(ctx, t, src)
-// 		values = append(values, p.Values())
-// 		ecs = append(ecs, p.Errors())
-// 	}
-// 	out := make(chan *Value)
-// 	done := ctx.Done()
-// 	go func() {
-// 		defer close(out)
-// 		for _, src := range values {
-// 			for v := range src {
-// 				select {
-// 				case out <- v:
-// 				case <-done:
-// 					return
-// 				}
-// 			}
-// 		}
-// 	}()
+// type DrainTask struct{}
 
-// 	return &Pipeline{out, MergeErrors(ecs...)}
+// func (DrainTask) Run(s Stream) error {
+// 	Drain(s)
+// 	return nil
+// }
+// func (DrainTask) Init(ctx context.Context) int {
+// 	return 0
+// }
+
+// type drainStream struct {
+// 	Stream
+// 	Drained bool
+// }
+
+// func DrainStream(s Stream) WriteStream {
+// 	return &drainStream{s, false}
+// }
+
+// func (s *drainStream) Push(v *Value) bool {
+// 	if !s.Drained {
+// 		s.Drained = true
+// 		if !Drain(s.Stream) {
+// 			return false
+// 		}
+// 	}
+// 	return s.Stream.Push(v)
 // }

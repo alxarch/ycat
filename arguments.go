@@ -207,7 +207,7 @@ type argParser struct {
 	stdout io.WriteCloser
 	eval   *Eval
 	output Output
-	input  []StreamTask
+	input  Producers
 	tasks  []StreamTask
 	help   bool
 	err    error
@@ -222,8 +222,7 @@ func (p *argParser) addFile(path string, format Format) {
 		// Handle here to be able to test stdin
 		p.input = append(p.input, ReadFromTask(p.stdin, format))
 	default:
-		f := InputFile{format, path}
-		p.input = append(p.input, &f)
+		p.input = append(p.input, ReadFromFile(path, format))
 	}
 }
 
@@ -278,7 +277,7 @@ func (p *argParser) inputTask() (s StreamTask) {
 	if p.input == nil {
 		return nil
 	}
-	s = StreamTaskSequence(p.input)
+	s = p.input
 	p.input = nil
 	return
 }

@@ -35,7 +35,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	p := ycat.BlankPipeline().Pipe(ctx, tasks...)
+	p := ycat.MakePipeline(ctx, tasks...)
 	exitCode := 0
 	for err := range p.Errors() {
 		if err != nil {
