@@ -4,11 +4,82 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
 	jsonnet "github.com/google/go-jsonnet"
 )
+
+// ParseArgs builds a StreamTask sequence from arguments
+func ParseArgs(argv []string, stdin io.Reader, stdout io.WriteCloser) ([]StreamTask, bool, error) {
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	p := argParser{
+		stdin:  stdin,
+		stdout: stdout,
+	}
+	if err := p.Parse(argv); err != nil {
+		return nil, false, err
+	}
+	return p.Tasks(), p.help, nil
+}
+
+type argParser struct {
+	vm     *jsonnet.VM
+	stdin  io.Reader
+	stdout io.WriteCloser
+	eval   *Eval
+	output Output
+	input  Producers
+	tasks  []StreamTask
+	help   bool
+	err    error
+}
+
+func (p *argParser) Parse(argv []string) (err error) {
+	for err == nil && len(argv) > 0 {
+		a := argv[0]
+		argv = argv[1:]
+		if len(a) > 1 && a[0] == '-' {
+			switch c := a[1]; c {
+			case '-':
+				if len(a) == 2 {
+					// Special -- arg
+					for _, a := range argv {
+						p.addFile(a, Auto)
+					}
+					return
+				}
+				name, value := splitArgV(a[2:])
+				argv, err = p.parseLong(name, value, argv)
+			default:
+				name, ok := shortArgs[c]
+				if !ok {
+					return fmt.Errorf("Invalid short option: -%c", c)
+				}
+				argv, err = p.parseLong(name, a[1:], argv)
+			}
+		} else {
+			p.addFile(a, Auto)
+		}
+	}
+	return
+}
+func (p *argParser) Tasks() (tasks []StreamTask) {
+	tasks = append(tasks, p.tasks...)
+	if task := p.inputTask(); task != nil {
+		tasks = append(tasks, task)
+	} else if len(tasks) == 0 {
+		tasks = append(tasks, ReadFromTask(p.stdin, YAML))
+	}
+	tasks = append(tasks, p.outputTask())
+	return tasks
+}
 
 // Usage for ycat cmd
 const Usage = `
@@ -48,27 +119,18 @@ If FILE is "-" or "" values are read from stdin until EOF.
 If FILE has no type option format is detected from extension.
 `
 
-func splitArgV(s string) (string, string) {
-	if n := strings.IndexByte(s, '='); 0 <= n && n < len(s) {
-		return s[:n], s[n+1:]
-	}
-	return s, ""
+var shortArgs = map[byte]string{
+	'j': "json",
+	'y': "yaml",
+	'i': "import",
+	'v': "var",
+	'e': "eval",
+	'o': "output",
+	'n': "null",
+	'a': "array",
+	'h': "help",
 }
 
-func peekArg(args []string) (string, bool) {
-	if len(args) > 0 {
-		return args[0], true
-	}
-	return "", false
-}
-
-func (p *argParser) Eval() *Eval {
-	if p.eval == nil {
-		p.eval = new(Eval)
-	}
-	return p.eval
-
-}
 func (p *argParser) parseLong(name, value string, argv []string) ([]string, error) {
 	switch name {
 	case "max-stack":
@@ -133,40 +195,34 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 	return argv, nil
 }
 
+func splitArgV(s string) (string, string) {
+	if n := strings.IndexByte(s, '='); 0 <= n && n < len(s) {
+		return s[:n], s[n+1:]
+	}
+	return s, ""
+}
+
+func peekArg(args []string) (string, bool) {
+	if len(args) > 0 {
+		return args[0], true
+	}
+	return "", false
+}
+
+func (p *argParser) Eval() *Eval {
+	if p.eval == nil {
+		p.eval = new(Eval)
+	}
+	return p.eval
+
+}
+
 func (p *argParser) addTask(t StreamTask) {
 	if input := p.inputTask(); input == nil {
 		p.tasks = append(p.tasks, t)
 	} else {
 		p.tasks = append(p.tasks, input, t)
 	}
-}
-
-func (p *argParser) parseShort(a string, argv []string) ([]string, error) {
-	for ; len(a) > 0; a = a[1:] {
-		switch c := a[0]; c {
-		case 'j':
-			return p.parseFiles(a[1:], argv, JSON), nil
-		case 'y':
-			return p.parseFiles(a[1:], argv, YAML), nil
-		case 'i':
-			return p.parseLong("import", a[1:], argv)
-		case 'v':
-			return p.parseLong("var", a[1:], argv)
-		case 'e':
-			return p.parseLong("eval", a[1:], argv)
-		case 'o':
-			return p.parseLong("output", a[1:], argv)
-		case 'n':
-			return p.parseLong("null", a[1:], argv)
-		case 'a':
-			return p.parseLong("array", a[1:], argv)
-		case 'h':
-			p.help = true
-		default:
-			return argv, fmt.Errorf("Invalid short option: -%c", c)
-		}
-	}
-	return argv, nil
 }
 
 func shiftArgV(v string, argv []string) (string, []string) {
@@ -180,6 +236,7 @@ func shiftArgV(v string, argv []string) (string, []string) {
 	}
 	return v, argv
 }
+
 func (p *argParser) parseFiles(path string, argv []string, format Format) []string {
 	switch {
 	case len(path) > 0:
@@ -201,18 +258,6 @@ func isOption(a string) bool {
 	return len(a) > 1 && a[0] == '-' && (a[1] != '-' || len(a) > 2)
 }
 
-type argParser struct {
-	vm     *jsonnet.VM
-	stdin  io.Reader
-	stdout io.WriteCloser
-	eval   *Eval
-	output Output
-	input  Producers
-	tasks  []StreamTask
-	help   bool
-	err    error
-}
-
 func (p *argParser) addFile(path string, format Format) {
 	if format == Auto {
 		format = DetectFormat(path)
@@ -224,53 +269,6 @@ func (p *argParser) addFile(path string, format Format) {
 	default:
 		p.input = append(p.input, ReadFromFile(path, format))
 	}
-}
-
-func ParseArgs(argv []string, stdin io.Reader, stdout io.WriteCloser) ([]StreamTask, bool, error) {
-	p := argParser{
-		stdin:  stdin,
-		stdout: stdout,
-	}
-	if err := p.Parse(argv); err != nil {
-		return nil, false, err
-	}
-	return p.Tasks(), p.help, nil
-}
-
-func (p *argParser) Parse(argv []string) (err error) {
-	for err == nil && len(argv) > 0 {
-		a := argv[0]
-		argv = argv[1:]
-		if len(a) > 1 && a[0] == '-' {
-			switch c := a[1]; c {
-			case '-':
-				if len(a) == 2 {
-					// Special -- arg
-					for _, a := range argv {
-						p.addFile(a, Auto)
-					}
-					return
-				}
-				name, value := splitArgV(a[2:])
-				argv, err = p.parseLong(name, value, argv)
-			default:
-				argv, err = p.parseShort(a[1:], argv)
-			}
-		} else {
-			p.addFile(a, Auto)
-		}
-	}
-	return
-}
-func (p *argParser) Tasks() (tasks []StreamTask) {
-	tasks = append(tasks, p.tasks...)
-	if task := p.inputTask(); task != nil {
-		tasks = append(tasks, task)
-	} else if len(tasks) == 0 {
-		tasks = append(tasks, ReadFromTask(p.stdin, YAML))
-	}
-	tasks = append(tasks, p.outputTask())
-	return tasks
 }
 
 func (p *argParser) outputTask() (s StreamTask) {
