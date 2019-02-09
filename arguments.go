@@ -269,8 +269,17 @@ func (p *argParser) Tasks() (tasks []StreamTask) {
 	} else if len(tasks) == 0 {
 		tasks = append(tasks, ReadFromTask(p.stdin, YAML))
 	}
-	tasks = append(tasks, StreamWriteTo(p.stdout, p.output))
+	tasks = append(tasks, p.outputTask())
 	return tasks
+}
+
+func (p *argParser) outputTask() (s StreamTask) {
+	switch p.output {
+	case OutputJSON:
+		return StreamWriteJSON(p.stdout)
+	default:
+		return StreamWriteYAML(p.stdout)
+	}
 }
 
 func (p *argParser) inputTask() (s StreamTask) {

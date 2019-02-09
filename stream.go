@@ -2,8 +2,6 @@ package ycat
 
 import (
 	"context"
-	"io"
-	"os"
 )
 
 type WriteStream interface {
@@ -80,56 +78,6 @@ func (s *stream) Push(v *Value) bool {
 		return true
 	case <-s.done:
 		return false
-	}
-}
-
-func ReadFromFile(path string, format Format) ProducerFunc {
-	if format == Auto {
-		format = DetectFormat(path)
-	}
-	return func(s WriteStream) error {
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		r := ReadFromTask(f, format)
-		return r(s)
-	}
-}
-
-func ReadFromTask(r io.Reader, format Format) ProducerFunc {
-	return func(s WriteStream) error {
-		dec := NewDecoder(r, format)
-		for {
-			v := new(Value)
-			if err := dec.Decode(v); err != nil {
-				if err == io.EOF {
-					return nil
-				}
-				return err
-			}
-
-			if !s.Push(v) {
-				return nil
-			}
-		}
-	}
-}
-
-func StreamWriteTo(w io.WriteCloser, format Output) ConsumerFunc {
-	return func(s ReadStream) error {
-		enc := NewEncoder(w, format)
-		defer w.Close()
-		for {
-			v, ok := s.Next()
-			if !ok {
-				return nil
-			}
-			if err := enc.Encode(v); err != nil {
-				return err
-			}
-		}
 	}
 }
 
