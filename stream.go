@@ -1,46 +1,64 @@
 package ycat
 
-import (
-	"context"
-)
-
+// WriteStream is a writtable stream of values
 type WriteStream interface {
-	Push(*Value) bool
+	Push(RawValue) bool
 }
+
+// ReadStream is a readable stream of values
 type ReadStream interface {
-	Next() (*Value, bool)
+	Next() (RawValue, bool)
 }
+
+// Stream is a readable/writable stream of values
 type Stream interface {
 	ReadStream
 	WriteStream
 }
+
+//StreamTask represents a task to run on a Stream
 type StreamTask interface {
 	Run(s Stream) error
 }
 
+// StreamFunc is a StreamTask callback
 type StreamFunc func(s Stream) error
 
+//Run implements StreamTask for StramFunc
 func (f StreamFunc) Run(s Stream) error { return f(s) }
 
+// Consumer consumes values from a readable stream
 type Consumer interface {
 	Consume(s ReadStream) error
 }
+
+// ConsumerFunc is a Consumer callback
 type ConsumerFunc func(s ReadStream) error
 
+// Consume implements Consumer
 func (f ConsumerFunc) Consume(s ReadStream) error { return f(s) }
-func (f ConsumerFunc) Run(s Stream) error         { return f(s) }
 
+// Run implements StreamTask
+func (f ConsumerFunc) Run(s Stream) error { return f(s) }
+
+// Producer generates values for a WriteStream
 type Producer interface {
 	Produce(s WriteStream) error
 }
+
+// ProducerFunc is a Producer callback
 type ProducerFunc func(s WriteStream) error
 
+// Produce implements Producer for ProducerFunc
 func (f ProducerFunc) Produce(s WriteStream) error { return f(s) }
+
+// Run implements StreamTask for ProducerFunc
 func (f ProducerFunc) Run(s Stream) error {
 	Drain(s)
 	return f(s)
 }
 
+// Producers is a sequence of Producers
 type Producers []Producer
 
 // Run implements StreamTask for Producers
@@ -58,11 +76,12 @@ func (tasks Producers) Produce(s WriteStream) error {
 
 type stream struct {
 	done <-chan struct{}
-	src  <-chan *Value
-	out  chan<- *Value
+	src  <-chan RawValue
+	out  chan<- RawValue
 }
 
-func (s *stream) Next() (v *Value, ok bool) {
+// Next implements ReadStream
+func (s *stream) Next() (v RawValue, ok bool) {
 	select {
 	case v, ok = <-s.src:
 		// println("s.value", ok)
@@ -72,7 +91,8 @@ func (s *stream) Next() (v *Value, ok bool) {
 	return
 }
 
-func (s *stream) Push(v *Value) bool {
+// Push implements WriteStream
+func (s *stream) Push(v RawValue) bool {
 	select {
 	case s.out <- v:
 		return true
@@ -81,36 +101,36 @@ func (s *stream) Push(v *Value) bool {
 	}
 }
 
+// NullStream is a Producer that pushes a null
 type NullStream struct{}
 
+// Produce implements Producer for NullStream
 func (NullStream) Produce(s WriteStream) error {
-	s.Push(&Value{Null, nil})
+	s.Push("null")
 	return nil
 }
 
+// ToArray concatenates stream values to an array
 type ToArray struct{}
 
-func (ToArray) Init(_ context.Context) int {
-	return 0
-}
-
+// Run implements StreamTask for ToArray
 func (ToArray) Run(s Stream) (err error) {
-	var arr []*Value
+	var values []RawValue
 	for {
 		v, ok := s.Next()
 		if ok {
-			arr = append(arr, v)
+			values = append(values, v)
 		} else {
 			break
 		}
 	}
-	if arr != nil {
-		v := Value{Array, arr}
-		s.Push(&v)
+	if values != nil {
+		s.Push(RawValueArray(values...))
 	}
 	return
 }
 
+// Drain is a helper that drains all values from a stream
 func Drain(s Stream) bool {
 	for {
 		v, ok := s.Next()
@@ -143,7 +163,7 @@ func Drain(s Stream) bool {
 // 	return &drainStream{s, false}
 // }
 
-// func (s *drainStream) Push(v *Value) bool {
+// func (s *drainStream) Push(v RawValue) bool {
 // 	if !s.Drained {
 // 		s.Drained = true
 // 		if !Drain(s.Stream) {

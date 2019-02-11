@@ -1,7 +1,6 @@
 package ycat
 
 import (
-	"encoding/json"
 	"os"
 	"path"
 	"strings"
@@ -9,7 +8,7 @@ import (
 	jsonnet "github.com/google/go-jsonnet"
 )
 
-// Eval handles Jsonnet snippet evaluation
+// Eval is the execution environment for Jsonnet
 type Eval struct {
 	Bind         string
 	MaxStackSize int
@@ -17,8 +16,10 @@ type Eval struct {
 	Vars         map[string]Var
 }
 
+// VarType is the type of an external variable
 type VarType uint
 
+// VarTypes
 const (
 	_ VarType = iota
 	FileVar
@@ -26,6 +27,7 @@ const (
 	RawVar
 )
 
+// Var is an external variable
 type Var struct {
 	Type  VarType
 	Value string
@@ -64,6 +66,7 @@ func (v Var) Render(w *strings.Builder, name string) {
 
 }
 
+// Render renders a snippet binding local variables
 func (e *Eval) Render(snippet string) string {
 	w := strings.Builder{}
 	for name, v := range e.Vars {
@@ -75,6 +78,7 @@ func (e *Eval) Render(snippet string) string {
 	return w.String()
 }
 
+// VM updates or creates a Jsonnet VM
 func (e *Eval) VM(vm *jsonnet.VM) *jsonnet.VM {
 	if vm == nil {
 		vm = jsonnet.MakeVM()
@@ -99,6 +103,7 @@ func (e *Eval) VM(vm *jsonnet.VM) *jsonnet.VM {
 
 }
 
+// DefaultInputVar is the default name for the stream value
 const DefaultInputVar = "x"
 
 func bindVar(v string) string {
@@ -117,26 +122,19 @@ func EvalTask(vm *jsonnet.VM, bind, filename, snippet string) StreamTask {
 			if !ok {
 				return nil
 			}
-			raw, err := json.Marshal(v)
+			vm.ExtCode(bind, string(v))
+			result, err := vm.EvaluateSnippet(filename, snippet)
 			if err != nil {
 				return err
 			}
-			vm.ExtCode(bind, string(raw))
-			val, err := vm.EvaluateSnippet(filename, snippet)
-			if err != nil {
-				return err
-			}
-			result := new(Value)
-			if err := json.Unmarshal([]byte(val), result); err != nil {
-				return err
-			}
-			if !s.Push(result) {
+			if !s.Push(RawValue(result)) {
 				return nil
 			}
 		}
 	})
 }
 
+// EvalFilename returns a filename on CWD
 func EvalFilename() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {

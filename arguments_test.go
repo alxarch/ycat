@@ -52,8 +52,7 @@ func TestParseArgs(t *testing.T) {
 			t.Errorf("Invalid help")
 		}
 
-		p := ycat.BlankPipeline()
-		p = p.Pipe(context.Background(), tasks...)
+		p := ycat.MakePipeline(context.Background(), tasks...)
 		for err := range p.Errors() {
 			if err != nil {
 				t.Error(err)

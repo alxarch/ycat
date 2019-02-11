@@ -5,11 +5,13 @@ import (
 	"sync"
 )
 
+// Pipeline is the endpoint of a value stream process
 type Pipeline struct {
-	values <-chan *Value
+	values <-chan RawValue
 	errors <-chan error
 }
 
+// Errors returns a channel with errors from tasks
 func (p *Pipeline) Errors() <-chan error {
 	if p.errors == nil {
 		ch := make(chan error)
@@ -19,18 +21,23 @@ func (p *Pipeline) Errors() <-chan error {
 	return p.errors
 }
 
-func (p *Pipeline) Values() <-chan *Value {
+// Values returns a channel with values from tasks
+func (p *Pipeline) Values() <-chan RawValue {
 	if p.values == nil {
-		ch := make(chan *Value)
+		ch := make(chan RawValue)
 		close(ch)
 		p.values = ch
 	}
 	return p.values
 }
+
+// MakePipeline builds and runs a pipeline
 func MakePipeline(ctx context.Context, tasks ...StreamTask) (p *Pipeline) {
 	p = new(Pipeline)
 	return p.Pipe(ctx, tasks...)
 }
+
+// Pipe adds tasks ro a pipeline
 func (p *Pipeline) Pipe(ctx context.Context, tasks ...StreamTask) *Pipeline {
 	ecs := make([]<-chan error, 0, len(tasks)+1)
 	ecs = append(ecs, p.Errors())
@@ -40,6 +47,7 @@ func (p *Pipeline) Pipe(ctx context.Context, tasks ...StreamTask) *Pipeline {
 	}
 	return &Pipeline{p.Values(), MergeErrors(ecs...)}
 }
+
 func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 	src := p.Values()
 	errc := make(chan error, 1)
@@ -47,10 +55,10 @@ func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 		done: ctx.Done(),
 		src:  src,
 	}
-	var out chan *Value
+	var out chan RawValue
 	switch task := task.(type) {
 	case Consumer:
-		out = make(chan *Value)
+		out = make(chan RawValue)
 		close(out)
 		s.out = out
 		go func() {
@@ -58,7 +66,7 @@ func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 			errc <- task.Consume(&s)
 		}()
 	case Producer:
-		out = make(chan *Value, 1)
+		out = make(chan RawValue, 1)
 		s.out = out
 		go func() {
 			defer close(errc)
@@ -67,7 +75,7 @@ func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 			errc <- task.Produce(&s)
 		}()
 	default:
-		out = make(chan *Value)
+		out = make(chan RawValue)
 		s.out = out
 		go func() {
 			defer close(errc)
@@ -79,6 +87,7 @@ func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 
 }
 
+// MergeErrors is a helper function that merges error channels
 func MergeErrors(cs ...<-chan error) <-chan error {
 	switch n := len(cs); n {
 	case 1:
