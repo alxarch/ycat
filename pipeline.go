@@ -64,6 +64,9 @@ func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 		go func() {
 			defer close(errc)
 			errc <- task.Consume(&s)
+			// Drain src
+			for _ = range src {
+			}
 		}()
 	case Producer:
 		out = make(chan RawValue, 1)
@@ -81,6 +84,9 @@ func (p *Pipeline) task(ctx context.Context, task StreamTask) *Pipeline {
 			defer close(errc)
 			defer close(out)
 			errc <- task.Run(&s)
+			// Drain src
+			for _ = range src {
+			}
 		}()
 	}
 	return &Pipeline{out, errc}

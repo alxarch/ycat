@@ -54,8 +54,10 @@ func (f ProducerFunc) Produce(s WriteStream) error { return f(s) }
 
 // Run implements StreamTask for ProducerFunc
 func (f ProducerFunc) Run(s Stream) error {
-	Drain(s)
-	return f(s)
+	if Drain(s) {
+		return f(s)
+	}
+	return nil
 }
 
 // Producers is a sequence of Producers
