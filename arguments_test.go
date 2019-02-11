@@ -3,17 +3,13 @@ package ycat_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/alxarch/ycat"
 )
-
-func fullTest(t *testing.T) {
-	t.Helper()
-
-}
 
 type nopCloser struct {
 	io.Writer
@@ -24,43 +20,47 @@ func (nopCloser) Close() error {
 }
 func TestParseArgs(t *testing.T) {
 	type TestCase struct {
-		Args     []string
-		Help     bool
-		Err      bool
-		NumTasks int
-		Stdin    string
-		Output   string
+		Args   []string
+		Stdin  string
+		Stdout string
 	}
 	tcs := []TestCase{
-		{nil, false, false, 2, "1", "1\n"},
-		{[]string{"testdata/foo.yaml"}, false, false, 2, "", "foo: bar\n"},
-		{[]string{"testdata/foo.yaml", "-e", `x + {bar: "baz"}`}, false, false, 2, "", "foo: bar\nbar: baz\n"},
+		{nil, "1", "1\n"},
+		{[]string{"-n"}, "", "null\n"},
+		{[]string{"-n", "-v", "y==foo", "-e", "y"}, "", "foo\n"},
+		{[]string{"-n", "--input-var", "y", "-e", "y"}, "", "null\n"},
+		{[]string{"testdata/foo.yaml", "-i", "foo=testdata/foo.libsonnet", "-e", "foo.hello(x, 'world')"}, "", "foo: bar\nname: world\n"},
+		{[]string{"testdata/foo.yaml"}, "", "foo: bar\n"},
+		{[]string{"-y", "testdata/foo.yaml"}, "", "foo: bar\n"},
+		{[]string{"testdata/foo.yaml", "-o", "j"}, "", `{"foo":"bar"}` + "\n"},
+		{[]string{"testdata/foo.yaml", "testdata/bar.json"}, "", "foo: bar\n---\nbar: foo\n"},
+		{[]string{"testdata/foo.yaml", "testdata/bar.json", "-a"}, "", "- foo: bar\n- bar: foo\n"},
+		{[]string{
+			"testdata/foo.yaml",
+			"-e", `{bar: "baz"} + x`,
+		}, "", "bar: baz\nfoo: bar\n"},
 		// {[]string{""}, false, false, 2, "1", "1\n"},
 	}
 	for i, tc := range tcs {
-		buf := &bytes.Buffer{}
-		stdout := &nopCloser{buf}
-		stdin := strings.NewReader(tc.Stdin)
-		tasks, help, err := ycat.ParseArgs(tc.Args, stdin, stdout)
-		if err != nil {
-			t.Fatal(i, err)
-		}
-		if len(tasks) != tc.NumTasks {
-			t.Errorf("%s Invalid tasks %d != %d", tc.Args, len(tasks), tc.NumTasks)
-		}
-		if help != tc.Help {
-			t.Errorf("Invalid help")
-		}
-
-		p := ycat.MakePipeline(context.Background(), tasks...)
-		for err := range p.Errors() {
+		name := fmt.Sprintf("%v", tc.Args)
+		t.Run(name, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			stdout := &nopCloser{buf}
+			stdin := strings.NewReader(tc.Stdin)
+			tasks, _, err := ycat.ParseArgs(tc.Args, stdin, stdout)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(i, err)
 			}
-		}
-		if buf.String() != tc.Output {
-			t.Errorf("%#v Wrong output: %q != %q", tc.Args, buf.String(), tc.Output)
-		}
+			p := ycat.MakePipeline(context.Background(), tasks...)
+			for err := range p.Errors() {
+				if err != nil {
+					t.Error(err)
+				}
+			}
+			if buf.String() != tc.Stdout {
+				t.Errorf("Wrong output: %q != %q", buf.String(), tc.Stdout)
+			}
+		})
 	}
 
 }

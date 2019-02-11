@@ -50,14 +50,14 @@ func (v Var) Render(w *strings.Builder, name string) {
 	case FileVar:
 		switch path.Ext(v.Value) {
 		case ".json", ".libsonnet", ".jsonnet":
-			w.WriteString(`import("`)
+			w.WriteString(`import "`)
 		case ".yaml", ".yml":
-			w.WriteString(`importyaml("`)
+			w.WriteString(`importyaml "`)
 		default:
-			w.WriteString(`importstr("`)
+			w.WriteString(`importstr "`)
 		}
 		w.WriteString(v.Value)
-		w.WriteString("\");\n")
+		w.WriteString("\";\n")
 	default:
 		w.WriteString(`std.extVar("`)
 		w.WriteString(name)

@@ -200,13 +200,6 @@ func splitArgV(s string) (string, string) {
 	return s, ""
 }
 
-func peekArg(args []string) (string, bool) {
-	if len(args) > 0 {
-		return args[0], true
-	}
-	return "", false
-}
-
 func (p *argParser) Eval() *Eval {
 	if p.eval == nil {
 		p.eval = new(Eval)
