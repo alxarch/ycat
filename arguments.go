@@ -187,6 +187,12 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 		return p.parseFiles(value, argv, YAML), nil
 	case "json":
 		return p.parseFiles(value, argv, JSON), nil
+	case "debug":
+		value, argv = shiftArgV(value, argv)
+		if value == "" {
+			value = "DEBUG"
+		}
+		p.addTask(Debug(value))
 	default:
 		return argv, fmt.Errorf("Invalid option: %q", name)
 	}

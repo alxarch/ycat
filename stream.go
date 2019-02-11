@@ -1,5 +1,10 @@
 package ycat
 
+import (
+	"log"
+	"os"
+)
+
 // WriteStream is a writtable stream of values
 type WriteStream interface {
 	Push(RawValue) bool
@@ -110,6 +115,24 @@ type NullStream struct{}
 func (NullStream) Produce(s WriteStream) error {
 	s.Push("null")
 	return nil
+}
+
+type Debug string
+
+func (d Debug) Run(s Stream) (err error) {
+	logger := log.New(os.Stderr, string(d), 0)
+	for {
+		v, ok := s.Next()
+		if !ok {
+			logger.Println("EOF")
+			return nil
+		}
+		logger.Println("Value", v)
+		if !s.Push(v) {
+			logger.Println("Push end")
+			return nil
+		}
+	}
 }
 
 // ToArray concatenates stream values to an array
