@@ -25,6 +25,7 @@ func TestParseArgs(t *testing.T) {
 		Stdout string
 	}
 	tcs := []TestCase{
+		{[]string{"-", "-e", "x"}, "null\n---\nnull\n", "null\n---\nnull\n"},
 		{nil, "1", "1\n"},
 		{[]string{"-n"}, "", "null\n"},
 		{[]string{"-n", "-v", "y==foo", "-e", "y"}, "", "foo\n"},

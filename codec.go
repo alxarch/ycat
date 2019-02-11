@@ -108,6 +108,9 @@ func ReadFromTask(r io.Reader, format Format) ProducerFunc {
 				}
 				return err
 			}
+			if v == "" {
+				v = "null"
+			}
 
 			if !s.Push(v) {
 				return nil
