@@ -122,7 +122,7 @@ func EvalTask(vm *jsonnet.VM, bind, filename, snippet string) StreamTask {
 			if !ok {
 				return nil
 			}
-			vm.ExtCode(bind, string(v))
+			vm.ExtCode(bind, v.MarshalJSONString())
 			result, err := vm.EvaluateSnippet(filename, snippet)
 			if err != nil {
 				return err

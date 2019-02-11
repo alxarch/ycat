@@ -21,6 +21,13 @@ func (v RawValue) Kind() ValueType {
 	return Invalid
 }
 
+func (v RawValue) MarshalJSONString() string {
+	if v == "" {
+		return "null"
+	}
+	return string(v)
+}
+
 // UnmarshalJSON implements json.Unmarshaler for RawValue
 func (v *RawValue) UnmarshalJSON(data []byte) error {
 	*v = RawValue(data)
