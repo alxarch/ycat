@@ -32,12 +32,21 @@ ENV:
         --max-stack <SIZE>       Jsonnet VM max stack size (default 500)
 
 EVAL:
-    -e, --eval <SNIPPET>         Process values with Jsonnet
+    <SCRIPT>                     Evaluate a Jsonnet script for each value.
+    -x, --exec <SCRIPT>          Same as above regardless of file extension.
+    -e, --eval <SNIPPET>         Evaluate a Jsonnet snippet for each value.
 
 
 If no INPUT is specified, values are read from stdin as YAML.
 If FILE is "-" or "" values are read from stdin until EOF.
-If FILE has no type option format is detected from extension.
+If FILE has no type option, format is detected from extension:
+    .json         -> JSON
+    .yaml, .yml   -> YAML
+    .jsonnet      -> Jsonnet script
+    .*            -> YCAT_FORMAT environment variable or YAML
+
+Default output format is YAML unless YCAT_OUTPUT environment variable is 'json'
+
 ```
 
 ## Examples
@@ -87,7 +96,13 @@ $ ycat a.yaml b.yaml -e 'x+{foo: "bar"}' -a
 Add kubernetes namespace `foo` to all resources without namespace
 
 ```
-$ ycat *.yaml -e 'x + { metadata +: { namespace: if "namespace" in super then super.namespace else "foo" }}'
+$ ycat *.yaml -e ' { metadata +: { namespace: "foo" } } + x'
+```
+
+Execute `foo.jsonnet` file with `x` local var bound to variables from `bar.json`, `baz.yaml`
+
+```
+$ ycat bar.json baz.yaml foo.jsonnet
 ```
 
 Process with [jq](http://stedolan.github.io/jq/) using a pipe
@@ -137,11 +152,23 @@ Each value is bound to a local variable named `x` inside the snippet by default.
 To use `Jsonnet` code from a file in the snippet use `-i <VAR>=<FILE>` and the exported value will be available as
 a local variable in the snippet.
 
+To run a `.jsonnet` script just add it as an argument. Variables are the same as the snippet.
+
+Local variables are bound before code in a script or snippet. It's up to the user to avoid conflicts/overrides.
+
+Some experimental (undocumented for now) helper methods are bound to `_` local variable.
+These will be documented once tests are in place and the API is more stable. For now look at `ycat.libsonnet` file. 
+
+## Caveats
+
+  - YAML comments are not preserved. (This is a shortcoming of gopkg.in/yaml package since there's no access to the AST)
+  - Only the JSON compatible subset of YAML is supported (the one that makes sense)
+  - Key order of objects is not preserved if processed with Jsonnet
+
 ## TODO
 
   - Add support for pretty printed output
   - Add support for reading .txt files
   - Add support for reading files as base64
   - Add support for reading files as hex
-  - Add support for Jsonnet libraries
   - Add support for sorting by JSONPath
