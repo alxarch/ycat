@@ -1,5 +1,7 @@
 package ycat
 
+//go:generate go run gen.go
+
 import (
 	"io/ioutil"
 	"os"
@@ -75,6 +77,7 @@ func (e *Eval) Render(snippet string) string {
 		v.Render(&w, name)
 	}
 	bind := bindVar(e.Bind)
+	Var{Type: CodeVar}.Render(&w, "_")
 	Var{Type: CodeVar}.Render(&w, bind)
 	w.WriteString(snippet)
 	return w.String()
@@ -100,6 +103,7 @@ func (e *Eval) VM() (vm *jsonnet.VM) {
 			vm.ExtVar(name, v.Value)
 		}
 	}
+	vm.ExtCode("_", ycatStdLib)
 	return vm
 
 }
