@@ -111,12 +111,21 @@ ENV:
         --max-stack <SIZE>       Jsonnet VM max stack size (default 500)
 
 EVAL:
-    -e, --eval <SNIPPET>         Process values with Jsonnet
+    <SCRIPT>                     Evaluate a Jsonnet script for each value.
+    -x, --exec <SCRIPT>          Same as above regardless of file extension.
+    -e, --eval <SNIPPET>         Evaluate a Jsonnet snippet for each value.
 
 
 If no INPUT is specified, values are read from stdin as YAML.
 If FILE is "-" or "" values are read from stdin until EOF.
-If FILE has no type option format is detected from extension.
+If FILE has no type option, format is detected from extension:
+    .json         -> JSON
+    .yaml, .yml   -> YAML
+    .jsonnet      -> Jsonnet script
+    .*            -> YCAT_FORMAT environment variable or YAML
+
+Default output format is YAML unless YCAT_OUTPUT environment variable is 'json'
+
 `
 
 var shortArgs = map[byte]string{
@@ -125,7 +134,8 @@ var shortArgs = map[byte]string{
 	'i': "import",
 	'v': "var",
 	'e': "eval",
-	'o': "output",
+	'x': "exec",
+	'o': "out",
 	'n': "null",
 	'a': "array",
 	'h': "help",
@@ -166,7 +176,10 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 			return argv, err
 		}
 		p.addTask(p.eval.Snippet(filename, value))
-	case "output":
+	case "exec":
+		value, argv = shiftArgV(value, argv)
+		p.addFile(value, JSONNET)
+	case "out":
 		value, argv = shiftArgV(value, argv)
 		if p.output = OutputFromString(value); p.output == OutputInvalid {
 			return argv, fmt.Errorf("Invalid output format: %q", value)
@@ -271,6 +284,9 @@ func (p *argParser) addFile(path string, format Format) {
 }
 
 func (p *argParser) outputTask() (s StreamTask) {
+	if p.output == OutputInvalid {
+		p.output = DefaultOutput()
+	}
 	switch p.output {
 	case OutputJSON:
 		return StreamWriteJSON(p.stdout)

@@ -34,15 +34,56 @@ func FormatFromString(s string) Format {
 	}
 }
 
+// EnvDefaultFormat is the name of the env var for file format detection
+const EnvDefaultFormat = "YCAT_FORMAT"
+
+// EnvDefaultOutput is the name of the env var for default file output
+const EnvDefaultOutput = "YCAT_OUTPUT"
+
+var (
+	defaultFormat = Auto
+	defaultOutput = OutputInvalid
+)
+
+// DefaultFormat returns the default format from environment
+func DefaultFormat() Format {
+	if defaultFormat == Auto {
+		f := FormatFromString(os.Getenv(EnvDefaultFormat))
+		switch f {
+		case YAML, JSON:
+			defaultFormat = f
+		default:
+			defaultFormat = YAML
+		}
+	}
+	return defaultFormat
+}
+
+// DefaultOutput returns the default output from environment
+func DefaultOutput() Output {
+	if defaultOutput == OutputInvalid {
+		f := OutputFromString(os.Getenv(EnvDefaultOutput))
+		switch f {
+		case OutputYAML, OutputJSON:
+			defaultOutput = f
+		default:
+			defaultOutput = OutputYAML
+		}
+	}
+	return defaultOutput
+}
+
 // DetectFormat detects an input format from the extension
 func DetectFormat(filename string) Format {
 	switch path.Ext(filename) {
 	case ".json":
 		return JSON
-	case ".jsonnet", ".libsonnet":
+	case ".jsonnet":
 		return JSONNET
-	default:
+	case ".yaml", ".yml":
 		return YAML
+	default:
+		return DefaultFormat()
 	}
 }
 
@@ -51,10 +92,10 @@ type Output int
 
 // Output formats
 const (
-	OutputInvalid Output = iota - 1
+	OutputInvalid Output = iota
 	OutputYAML
 	OutputJSON
-	OutputRaw // Only with --eval
+	// OutputRaw // Only with --eval
 )
 
 // OutputFromString converts a string to Output
@@ -64,8 +105,8 @@ func OutputFromString(s string) Output {
 		return OutputJSON
 	case "yaml", "y":
 		return OutputYAML
-	case "raw", "r":
-		return OutputRaw
+	// case "raw", "r":
+	// 	return OutputRaw
 	default:
 		return OutputInvalid
 	}
