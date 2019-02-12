@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path"
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
@@ -18,6 +19,7 @@ const (
 	Auto Format = iota
 	YAML
 	JSON
+	JSONNET
 )
 
 // FormatFromString converts a string to Format
@@ -33,11 +35,15 @@ func FormatFromString(s string) Format {
 }
 
 // DetectFormat detects an input format from the extension
-func DetectFormat(path string) Format {
-	if strings.HasSuffix(path, ".json") {
+func DetectFormat(filename string) Format {
+	switch path.Ext(filename) {
+	case ".json":
 		return JSON
+	case ".jsonnet", ".libsonnet":
+		return JSONNET
+	default:
+		return YAML
 	}
-	return YAML
 }
 
 // Output is an output format

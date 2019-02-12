@@ -1,6 +1,7 @@
 package ycat
 
 import (
+	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -14,6 +15,7 @@ type Eval struct {
 	MaxStackSize int
 	Array        bool
 	Vars         map[string]Var
+	vm           *jsonnet.VM
 }
 
 // VarType is the type of an external variable
@@ -79,16 +81,15 @@ func (e *Eval) Render(snippet string) string {
 }
 
 // VM updates or creates a Jsonnet VM
-func (e *Eval) VM(vm *jsonnet.VM) *jsonnet.VM {
-	if vm == nil {
-		vm = jsonnet.MakeVM()
+func (e *Eval) VM() (vm *jsonnet.VM) {
+	if e.vm == nil {
+		e.vm = jsonnet.MakeVM()
 	}
+	vm = e.vm
 	if e.MaxStackSize > 0 {
 		vm.MaxStack = e.MaxStackSize
 	}
 
-	//TODO: [eval] Add FileImporter and -J search dir args
-	//TODO: [eval] Define some default helpers (ie sortBy) and bind them to _
 	for name, v := range e.Vars {
 		switch v.Type {
 		case FileVar:
@@ -113,9 +114,21 @@ func bindVar(v string) string {
 	return v
 }
 
-// EvalTask transforms a stream of input values with Jsonnet
-func EvalTask(vm *jsonnet.VM, bind, filename, snippet string) StreamTask {
-	bind = bindVar(bind)
+func (e *Eval) SnippetFromFile(filename string) StreamTask {
+	return StreamFunc(func(s Stream) error {
+		snippet, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return err
+		}
+		return e.Snippet(filename, string(snippet)).Run(s)
+	})
+}
+
+// EvalSnippetTask transforms a stream of input values with Jsonnet
+func (e *Eval) Snippet(filename, snippet string) StreamTask {
+	bind := bindVar(e.Bind)
+	vm := e.VM()
+	snippet = e.Render(snippet)
 	return StreamFunc(func(s Stream) error {
 		for {
 			v, ok := s.Next()

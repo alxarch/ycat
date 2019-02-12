@@ -33,7 +33,7 @@ type argParser struct {
 	vm     *jsonnet.VM
 	stdin  io.Reader
 	stdout io.WriteCloser
-	eval   *Eval
+	eval   Eval
 	output Output
 	input  Producers
 	tasks  []StreamTask
@@ -161,15 +161,11 @@ func (p *argParser) parseLong(name, value string, argv []string) ([]string, erro
 		p.Eval().AddVar(typ, name, value)
 	case "eval":
 		value, argv = shiftArgV(value, argv)
-		e := p.Eval()
-		snippet := e.Render(value)
-		p.vm = e.VM(p.vm)
 		filename, err := EvalFilename()
 		if err != nil {
 			return argv, err
 		}
-		eval := EvalTask(p.vm, e.Bind, filename, snippet)
-		p.addTask(eval)
+		p.addTask(p.eval.Snippet(filename, value))
 	case "output":
 		value, argv = shiftArgV(value, argv)
 		if p.output = OutputFromString(value); p.output == OutputInvalid {
@@ -207,10 +203,7 @@ func splitArgV(s string) (string, string) {
 }
 
 func (p *argParser) Eval() *Eval {
-	if p.eval == nil {
-		p.eval = new(Eval)
-	}
-	return p.eval
+	return &p.eval
 
 }
 
@@ -263,6 +256,10 @@ func isOption(a string) bool {
 func (p *argParser) addFile(path string, format Format) {
 	if format == Auto {
 		format = DetectFormat(path)
+	}
+	if format == JSONNET {
+		p.addTask(p.eval.SnippetFromFile(path))
+		return
 	}
 	switch path {
 	case "", "-":
