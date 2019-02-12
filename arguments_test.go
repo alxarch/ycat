@@ -25,7 +25,7 @@ func TestParseArgs(t *testing.T) {
 		Stdout string
 	}
 	tcs := []TestCase{
-		{[]string{"-", "-e", "x"}, "null\n---\nnull\n", "null\n---\nnull\n"},
+		{[]string{"-e", "x"}, "null\n---\nnull\n", "null\n---\nnull\n"},
 		{nil, "1", "1\n"},
 		{[]string{"-n"}, "", "null\n"},
 		{[]string{"-n", "-v", "y==foo", "-e", "y"}, "", "foo\n"},
@@ -36,10 +36,7 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"testdata/foo.yaml", "-o", "j"}, "", `{"foo":"bar"}` + "\n"},
 		{[]string{"testdata/foo.yaml", "testdata/bar.json"}, "", "foo: bar\n---\nbar: foo\n"},
 		{[]string{"testdata/foo.yaml", "testdata/bar.json", "-a"}, "", "- foo: bar\n- bar: foo\n"},
-		{[]string{
-			"testdata/foo.yaml",
-			"-e", `{bar: "baz"} + x`,
-		}, "", "bar: baz\nfoo: bar\n"},
+		{[]string{"testdata/foo.yaml", "-e", `{bar: "baz"} + x`}, "", "bar: baz\nfoo: bar\n"},
 		// {[]string{""}, false, false, 2, "1", "1\n"},
 	}
 	for i, tc := range tcs {

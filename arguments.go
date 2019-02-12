@@ -216,7 +216,12 @@ func (p *argParser) Eval() *Eval {
 
 func (p *argParser) addTask(t StreamTask) {
 	if input := p.inputTask(); input == nil {
-		p.tasks = append(p.tasks, t)
+		if len(p.tasks) == 0 {
+			input = ReadFromTask(p.stdin, YAML)
+			p.tasks = append(p.tasks, input, t)
+		} else {
+			p.tasks = append(p.tasks, t)
+		}
 	} else {
 		p.tasks = append(p.tasks, input, t)
 	}
